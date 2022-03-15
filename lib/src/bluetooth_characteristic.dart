@@ -99,6 +99,28 @@ class BluetoothCharacteristic {
     });
   }
 
+  /// Retrieves one next value of the characteristic
+  Future<List<int>> nextValue() async {
+    FlutterBlue.instance._log(LogLevel.info,
+        'remoteId: ${deviceId.toString()} characteristicUuid: ${uuid.toString()} serviceUuid: ${serviceUuid.toString()}');
+
+    return FlutterBlue.instance._methodStream
+        .where((m) => m.method == "ReadCharacteristicResponse")
+        .map((m) => m.arguments)
+        .map((buffer) =>
+            new protos.ReadCharacteristicResponse.fromBuffer(buffer))
+        .where((p) =>
+            (p.remoteId == deviceId.toString()) &&
+            (p.characteristic.uuid == uuid.toString()) &&
+            (p.characteristic.serviceUuid == serviceUuid.toString()))
+        .map((p) => p.characteristic.value)
+        .first
+        .then((d) {
+      _value.add(d);
+      return d;
+    });
+  }
+
   /// Writes the value of a characteristic.
   /// [CharacteristicWriteType.withoutResponse]: the write is not
   /// guaranteed and will return immediately with success.
