@@ -33,7 +33,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
 @property(nonatomic, retain) NSObject<FlutterPluginRegistrar> *registrar;
 @property(nonatomic, retain) FlutterMethodChannel *channel;
 @property(nonatomic, retain) FlutterBlueStreamHandler *stateStreamHandler;
-@property(nonatomic, retain) CBCentralManager *centralManager;
+@property(nonatomic, readonly) CBCentralManager *centralManager;
 @property(nonatomic) NSMutableDictionary *scannedPeripherals;
 @property(nonatomic) NSMutableArray *servicesThatNeedDiscovered;
 @property(nonatomic) NSMutableArray *characteristicsThatNeedDiscovered;
@@ -48,7 +48,6 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
   FlutterEventChannel* stateChannel = [FlutterEventChannel eventChannelWithName:NAMESPACE @"/state" binaryMessenger:[registrar messenger]];
   FlutterBluePlugin* instance = [[FlutterBluePlugin alloc] init];
   instance.channel = channel;
-  instance.centralManager = [[CBCentralManager alloc] initWithDelegate:instance queue:nil];
   instance.scannedPeripherals = [NSMutableDictionary new];
   instance.servicesThatNeedDiscovered = [NSMutableArray new];
   instance.characteristicsThatNeedDiscovered = [NSMutableArray new];
@@ -62,13 +61,21 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
   [registrar addMethodCallDelegate:instance channel:channel];
 }
 
+- (CBCentralManager *)centralManager {
+  if (!_centralManager) {
+    _centralManager = [[CBCentralManager alloc] initWithDelegate:instance queue:nil];
+  }
+
+  return _centralManager;
+}
+
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
   if ([@"setLogLevel" isEqualToString:call.method]) {
     NSNumber *logLevelIndex = [call arguments];
     _logLevel = (LogLevel)[logLevelIndex integerValue];
     result(nil);
   } else if ([@"state" isEqualToString:call.method]) {
-    FlutterStandardTypedData *data = [self toFlutterData:[self toBluetoothStateProto:self->_centralManager.state]];
+    FlutterStandardTypedData *data = [self toFlutterData:[self toBluetoothStateProto:self.centralManager.state]];
     result(data);
   } else if([@"isAvailable" isEqualToString:call.method]) {
     if(self.centralManager.state != CBManagerStateUnsupported && self.centralManager.state != CBManagerStateUnknown) {
@@ -98,14 +105,14 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
     if (request.allowDuplicates) {
         [scanOpts setObject:[NSNumber numberWithBool:YES] forKey:CBCentralManagerScanOptionAllowDuplicatesKey];
     }
-    [self->_centralManager scanForPeripheralsWithServices:uuids options:scanOpts];
+    [self.centralManager scanForPeripheralsWithServices:uuids options:scanOpts];
     result(nil);
   } else if([@"stopScan" isEqualToString:call.method]) {
-    [self->_centralManager stopScan];
+    [self.centralManager stopScan];
     result(nil);
   } else if([@"getConnectedDevices" isEqualToString:call.method]) {
     // Cannot pass blank UUID list for security reasons. Assume all devices have the Generic Access service 0x1800
-    NSArray *periphs = [self->_centralManager retrieveConnectedPeripheralsWithServices:@[[CBUUID UUIDWithString:@"1800"]]];
+    NSArray *periphs = [self.centralManager retrieveConnectedPeripheralsWithServices:@[[CBUUID UUIDWithString:@"1800"]]];
     NSLog(@"getConnectedDevices periphs size: %lu", [periphs count]);
     result([self toFlutterData:[self toConnectedDeviceResponseProto:periphs]]);
   } else if([@"connect" isEqualToString:call.method]) {
@@ -362,7 +369,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
 //
 - (void)centralManagerDidUpdateState:(nonnull CBCentralManager *)central {
   if(_stateStreamHandler.sink != nil) {
-    FlutterStandardTypedData *data = [self toFlutterData:[self toBluetoothStateProto:self->_centralManager.state]];
+    FlutterStandardTypedData *data = [self toFlutterData:[self toBluetoothStateProto:self.centralManager.state]];
     self.stateStreamHandler.sink(data);
   }
 }
