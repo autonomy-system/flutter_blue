@@ -33,7 +33,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
 @property(nonatomic, retain) NSObject<FlutterPluginRegistrar> *registrar;
 @property(nonatomic, retain) FlutterMethodChannel *channel;
 @property(nonatomic, retain) FlutterBlueStreamHandler *stateStreamHandler;
-@property(nonatomic, readonly) CBCentralManager *centralManager;
+@property(nonatomic) CBCentralManager *centralManager;
 @property(nonatomic) NSMutableDictionary *scannedPeripherals;
 @property(nonatomic) NSMutableArray *servicesThatNeedDiscovered;
 @property(nonatomic) NSMutableArray *characteristicsThatNeedDiscovered;
@@ -63,7 +63,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
 
 - (CBCentralManager *)centralManager {
   if (!_centralManager) {
-    _centralManager = [[CBCentralManager alloc] initWithDelegate:instance queue:nil];
+    _centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
   }
 
   return _centralManager;
