@@ -127,7 +127,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
                                    details:nil];
       }
       // TODO: Implement Connect options (#36)
-      [_centralManager connectPeripheral:peripheral options:nil];
+      [self.centralManager connectPeripheral:peripheral options:nil];
       result(nil);
     } @catch(FlutterError *e) {
       result(e);
@@ -136,7 +136,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
     NSString *remoteId = [call arguments];
     @try {
       CBPeripheral *peripheral = [self findPeripheral:remoteId];
-      [_centralManager cancelPeripheralConnection:peripheral];
+      [self.centralManager cancelPeripheralConnection:peripheral];
       result(nil);
     } @catch(FlutterError *e) {
       result(e);
@@ -266,7 +266,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
 }
 
 - (CBPeripheral*)findPeripheral:(NSString*)remoteId {
-  NSArray<CBPeripheral*> *peripherals = [_centralManager retrievePeripheralsWithIdentifiers:@[[[NSUUID alloc] initWithUUIDString:remoteId]]];
+  NSArray<CBPeripheral*> *peripherals = [self.centralManager retrievePeripheralsWithIdentifiers:@[[[NSUUID alloc] initWithUUIDString:remoteId]]];
   CBPeripheral *peripheral;
   for(CBPeripheral *p in peripherals) {
     if([[p.identifier UUIDString] isEqualToString:remoteId]) {
