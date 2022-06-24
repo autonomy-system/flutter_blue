@@ -8,7 +8,7 @@ class FlutterBlue {
   final MethodChannel _channel = const MethodChannel('$NAMESPACE/methods');
   final EventChannel _stateChannel = const EventChannel('$NAMESPACE/state');
   final StreamController<MethodCall> _methodStreamController =
-      new StreamController.broadcast(); // ignore: close_sinks
+      StreamController.broadcast(); // ignore: close_sinks
   Stream<MethodCall> get _methodStream => _methodStreamController
       .stream; // Used internally to dispatch methods from platform.
 
@@ -20,10 +20,10 @@ class FlutterBlue {
       _methodStreamController.add(call);
     });
 
-    _setLogLevelIfAvailable();
+    setLogLevel(logLevel);
   }
 
-  static FlutterBlue _instance = new FlutterBlue._();
+  static final FlutterBlue _instance = FlutterBlue._();
   static FlutterBlue get instance => _instance;
 
   /// Log level of the instance, default is all messages (debug).
@@ -41,10 +41,33 @@ class FlutterBlue {
   /// Checks if Bluetooth functionality is turned on
   Future<bool> get isOn => _channel.invokeMethod('isOn').then<bool>((d) => d);
 
-  BehaviorSubject<bool> _isScanning = BehaviorSubject.seeded(false);
+  /// Tries to turn on Bluetooth (Android only),
+  ///
+  /// Returns true if bluetooth is being turned on.
+  /// You have to listen for a stateChange to ON to ensure bluetooth is already running
+  ///
+  /// Returns false if an error occured or bluetooth is already running
+  ///
+  Future<bool> turnOn() {
+    return _channel.invokeMethod('turnOn').then<bool>((d) => d);
+  }
+
+  /// Tries to turn off Bluetooth (Android only),
+  ///
+  /// Returns true if bluetooth is being turned off.
+  /// You have to listen for a stateChange to OFF to ensure bluetooth is turned off
+  ///
+  /// Returns false if an error occured
+  ///
+  Future<bool> turnOff() {
+    return _channel.invokeMethod('turnOff').then<bool>((d) => d);
+  }
+
+  final BehaviorSubject<bool> _isScanning = BehaviorSubject.seeded(false);
   Stream<bool> get isScanning => _isScanning.stream;
 
-  BehaviorSubject<List<ScanResult>> _scanResults = BehaviorSubject.seeded([]);
+  final BehaviorSubject<List<ScanResult>> _scanResults =
+      BehaviorSubject.seeded([]);
 
   /// Returns a stream that is a list of [ScanResult] results while a scan is in progress.
   ///
@@ -55,18 +78,18 @@ class FlutterBlue {
   /// results of a scan in real time while the scan is in progress.
   Stream<List<ScanResult>> get scanResults => _scanResults.stream;
 
-  PublishSubject _stopScanPill = new PublishSubject();
+  final PublishSubject _stopScanPill = PublishSubject();
 
   /// Gets the current state of the Bluetooth module
   Stream<BluetoothState> get state async* {
     yield await _channel
         .invokeMethod('state')
-        .then((buffer) => new protos.BluetoothState.fromBuffer(buffer))
+        .then((buffer) => protos.BluetoothState.fromBuffer(buffer))
         .then((s) => BluetoothState.values[s.state.value]);
 
     yield* _stateChannel
         .receiveBroadcastStream()
-        .map((buffer) => new protos.BluetoothState.fromBuffer(buffer))
+        .map((buffer) => protos.BluetoothState.fromBuffer(buffer))
         .map((s) => BluetoothState.values[s.state.value]);
   }
 
@@ -79,11 +102,13 @@ class FlutterBlue {
         .then((p) => p.map((d) => BluetoothDevice.fromProto(d)).toList());
   }
 
-  _setLogLevelIfAvailable() async {
-    if (await isAvailable) {
-      // Send the log level to the underlying platforms.
-      setLogLevel(logLevel);
-    }
+  /// Retrieve a list of bonded devices (Android only)
+  Future<List<BluetoothDevice>> get bondedDevices {
+    return _channel
+        .invokeMethod('getBondedDevices')
+        .then((buffer) => protos.ConnectedDevicesResponse.fromBuffer(buffer))
+        .then((p) => p.devices)
+        .then((p) => p.map((d) => BluetoothDevice.fromProto(d)).toList());
   }
 
   /// Starts a scan for Bluetooth Low Energy devices and returns a stream
@@ -126,7 +151,7 @@ class FlutterBlue {
       print('Error starting scan.');
       _stopScanPill.add(null);
       _isScanning.add(false);
-      throw e;
+      rethrow;
     }
 
     yield* FlutterBlue.instance._methodStream
@@ -134,9 +159,9 @@ class FlutterBlue {
         .map((m) => m.arguments)
         .takeUntil(Rx.merge(killStreams))
         .doOnDone(stopScan)
-        .map((buffer) => new protos.ScanResult.fromBuffer(buffer))
+        .map((buffer) => protos.ScanResult.fromBuffer(buffer))
         .map((p) {
-      final result = new ScanResult.fromProto(p);
+      final result = ScanResult.fromProto(p);
       final list = _scanResults.value ?? [];
       int index = list.indexOf(result);
       if (index != -1) {
@@ -231,10 +256,10 @@ enum BluetoothState {
 
 class ScanMode {
   const ScanMode(this.value);
-  static const lowPower = const ScanMode(0);
-  static const balanced = const ScanMode(1);
-  static const lowLatency = const ScanMode(2);
-  static const opportunistic = const ScanMode(-1);
+  static const lowPower = ScanMode(0);
+  static const balanced = ScanMode(1);
+  static const lowLatency = ScanMode(2);
+  static const opportunistic = ScanMode(-1);
   final int value;
 }
 
@@ -255,9 +280,8 @@ class DeviceIdentifier {
 
 class ScanResult {
   ScanResult.fromProto(protos.ScanResult p)
-      : device = new BluetoothDevice.fromProto(p.device),
-        advertisementData =
-            new AdvertisementData.fromProto(p.advertisementData),
+      : device = BluetoothDevice.fromProto(p.device),
+        advertisementData = AdvertisementData.fromProto(p.advertisementData),
         rssi = p.rssi;
 
   final BluetoothDevice device;

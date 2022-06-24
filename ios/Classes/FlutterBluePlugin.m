@@ -33,7 +33,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
 @property(nonatomic, retain) NSObject<FlutterPluginRegistrar> *registrar;
 @property(nonatomic, retain) FlutterMethodChannel *channel;
 @property(nonatomic, retain) FlutterBlueStreamHandler *stateStreamHandler;
-@property(nonatomic) CBCentralManager *centralManager;
+@property(nonatomic, retain) CBCentralManager *centralManager;
 @property(nonatomic) NSMutableDictionary *scannedPeripherals;
 @property(nonatomic) NSMutableArray *servicesThatNeedDiscovered;
 @property(nonatomic) NSMutableArray *characteristicsThatNeedDiscovered;
@@ -52,21 +52,13 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
   instance.servicesThatNeedDiscovered = [NSMutableArray new];
   instance.characteristicsThatNeedDiscovered = [NSMutableArray new];
   instance.logLevel = emergency;
-  
+
   // STATE
   FlutterBlueStreamHandler* stateStreamHandler = [[FlutterBlueStreamHandler alloc] init];
   [stateChannel setStreamHandler:stateStreamHandler];
   instance.stateStreamHandler = stateStreamHandler;
-  
+
   [registrar addMethodCallDelegate:instance channel:channel];
-}
-
-- (CBCentralManager *)centralManager {
-  if (!_centralManager) {
-    _centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
-  }
-
-  return _centralManager;
 }
 
 - (void)handleMethodCall:(FlutterMethodCall*)call result:(FlutterResult)result {
@@ -74,8 +66,13 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
     NSNumber *logLevelIndex = [call arguments];
     _logLevel = (LogLevel)[logLevelIndex integerValue];
     result(nil);
-  } else if ([@"state" isEqualToString:call.method]) {
-    FlutterStandardTypedData *data = [self toFlutterData:[self toBluetoothStateProto:self.centralManager.state]];
+    return;
+  }
+  if (self.centralManager == nil) {
+    self.centralManager = [[CBCentralManager alloc] initWithDelegate:self queue:nil];
+  }
+  if ([@"state" isEqualToString:call.method]) {
+    FlutterStandardTypedData *data = [self toFlutterData:[self toBluetoothStateProto:self->_centralManager.state]];
     result(data);
   } else if([@"isAvailable" isEqualToString:call.method]) {
     if(self.centralManager.state != CBManagerStateUnsupported && self.centralManager.state != CBManagerStateUnknown) {
@@ -105,14 +102,14 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
     if (request.allowDuplicates) {
         [scanOpts setObject:[NSNumber numberWithBool:YES] forKey:CBCentralManagerScanOptionAllowDuplicatesKey];
     }
-    [self.centralManager scanForPeripheralsWithServices:uuids options:scanOpts];
+    [self->_centralManager scanForPeripheralsWithServices:uuids options:scanOpts];
     result(nil);
   } else if([@"stopScan" isEqualToString:call.method]) {
-    [self.centralManager stopScan];
+    [self->_centralManager stopScan];
     result(nil);
   } else if([@"getConnectedDevices" isEqualToString:call.method]) {
     // Cannot pass blank UUID list for security reasons. Assume all devices have the Generic Access service 0x1800
-    NSArray *periphs = [self.centralManager retrieveConnectedPeripheralsWithServices:@[[CBUUID UUIDWithString:@"1800"]]];
+    NSArray *periphs = [self->_centralManager retrieveConnectedPeripheralsWithServices:@[[CBUUID UUIDWithString:@"1800"]]];
     NSLog(@"getConnectedDevices periphs size: %lu", [periphs count]);
     result([self toFlutterData:[self toConnectedDeviceResponseProto:periphs]]);
   } else if([@"connect" isEqualToString:call.method]) {
@@ -127,7 +124,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
                                    details:nil];
       }
       // TODO: Implement Connect options (#36)
-      [self.centralManager connectPeripheral:peripheral options:nil];
+      [_centralManager connectPeripheral:peripheral options:nil];
       result(nil);
     } @catch(FlutterError *e) {
       result(e);
@@ -136,7 +133,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
     NSString *remoteId = [call arguments];
     @try {
       CBPeripheral *peripheral = [self findPeripheral:remoteId];
-      [self.centralManager cancelPeripheralConnection:peripheral];
+      [_centralManager cancelPeripheralConnection:peripheral];
       result(nil);
     } @catch(FlutterError *e) {
       result(e);
@@ -260,13 +257,22 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
     }
   } else if([@"requestMtu" isEqualToString:call.method]) {
     result([FlutterError errorWithCode:@"requestMtu" message:@"iOS does not allow mtu requests to the peripheral" details:NULL]);
+  } else if([@"readRssi" isEqualToString:call.method]) {
+    NSString *remoteId = [call arguments];
+    @try {
+      CBPeripheral *peripheral = [self findPeripheral:remoteId];
+      [peripheral readRSSI];
+      result(nil);
+    } @catch(FlutterError *e) {
+      result(e);
+    }
   } else {
     result(FlutterMethodNotImplemented);
   }
 }
 
 - (CBPeripheral*)findPeripheral:(NSString*)remoteId {
-  NSArray<CBPeripheral*> *peripherals = [self.centralManager retrievePeripheralsWithIdentifiers:@[[[NSUUID alloc] initWithUUIDString:remoteId]]];
+  NSArray<CBPeripheral*> *peripherals = [_centralManager retrievePeripheralsWithIdentifiers:@[[[NSUUID alloc] initWithUUIDString:remoteId]]];
   CBPeripheral *peripheral;
   for(CBPeripheral *p in peripherals) {
     if([[p.identifier UUIDString] isEqualToString:remoteId]) {
@@ -369,7 +375,7 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
 //
 - (void)centralManagerDidUpdateState:(nonnull CBCentralManager *)central {
   if(_stateStreamHandler.sink != nil) {
-    FlutterStandardTypedData *data = [self toFlutterData:[self toBluetoothStateProto:self.centralManager.state]];
+    FlutterStandardTypedData *data = [self toFlutterData:[self toBluetoothStateProto:self->_centralManager.state]];
     self.stateStreamHandler.sink(data);
   }
 }
@@ -594,20 +600,24 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
   }
   // Manufacturer Specific Data
   NSData *manufData = advertisementData[CBAdvertisementDataManufacturerDataKey];
-  if(manufData.length > 2) {
+  if(manufData != nil && manufData.length > 2) {
     unsigned short manufacturerId;
     [manufData getBytes:&manufacturerId length:2];
     [[ads manufacturerData] setObject:[manufData subdataWithRange:NSMakeRange(2, manufData.length - 2)] forKey:manufacturerId];
   }
   // Service Data
   NSDictionary *serviceData = advertisementData[CBAdvertisementDataServiceDataKey];
-  for (CBUUID *uuid in serviceData) {
-    [[ads serviceData] setObject:serviceData[uuid] forKey:uuid.UUIDString];
+  if(serviceData != nil) {
+    for (CBUUID *uuid in serviceData) {
+      [[ads serviceData] setObject:serviceData[uuid] forKey:uuid.UUIDString];
+    }
   }
   // Service Uuids
   NSArray *serviceUuids = advertisementData[CBAdvertisementDataServiceUUIDsKey];
-  for (CBUUID *uuid in serviceUuids) {
-    [[ads serviceUuidsArray] addObject:uuid.UUIDString];
+  if(serviceUuids != nil) {
+    for (CBUUID *uuid in serviceUuids) {
+      [[ads serviceUuidsArray] addObject:uuid.UUIDString];
+    }
   }
   [result setAdvertisementData:ads];
   return result;
@@ -778,4 +788,3 @@ typedef NS_ENUM(NSUInteger, LogLevel) {
 }
 
 @end
-
