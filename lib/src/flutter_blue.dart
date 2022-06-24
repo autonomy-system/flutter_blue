@@ -12,6 +12,8 @@ class FlutterBlue {
   Stream<MethodCall> get _methodStream => _methodStreamController
       .stream; // Used internally to dispatch methods from platform.
 
+  Function(LogLevel level, String message)? _logFunc;
+
   /// Singleton boilerplate
   FlutterBlue._() {
     _channel.setMethodCallHandler((MethodCall call) async {
@@ -27,6 +29,10 @@ class FlutterBlue {
   /// Log level of the instance, default is all messages (debug).
   LogLevel _logLevel = LogLevel.debug;
   LogLevel get logLevel => _logLevel;
+
+  void setLogFunc(Function(LogLevel level, String message)? logFunc) {
+    _logFunc = logFunc;
+  }
 
   /// Checks whether the device supports Bluetooth
   Future<bool> get isAvailable =>
@@ -192,7 +198,9 @@ class FlutterBlue {
   }
 
   void _log(LogLevel level, String message) {
-    if (level.index <= _logLevel.index) {
+    if (_logFunc != null) {
+      _logFunc!(level, message);
+    } else if (level.index <= _logLevel.index) {
       print(message);
     }
   }
