@@ -14,7 +14,6 @@ import android.bluetooth.BluetoothGatt;
 import android.bluetooth.BluetoothGattCallback;
 import android.bluetooth.BluetoothGattCharacteristic;
 import android.bluetooth.BluetoothGattDescriptor;
-import android.bluetooth.BluetoothGattServer;
 import android.bluetooth.BluetoothGattService;
 import android.bluetooth.BluetoothManager;
 import android.bluetooth.BluetoothProfile;
@@ -77,7 +76,7 @@ public class FlutterBluePlugin implements FlutterPlugin, ActivityAware, MethodCa
     private Application application;
     private Activity activity;
 
-    private static final int REQUEST_FINE_LOCATION_PERMISSIONS = 1452;
+    private static final int REQUEST_FINE_AND_BLUETOOTH_LOCATION_PERMISSIONS = 1452;
     static final private UUID CCCD_ID = UUID.fromString("00002902-0000-1000-8000-00805f9b34fb");
     private final Map<String, BluetoothDeviceCache> mDevices = new HashMap<>();
     private LogLevel logLevel = LogLevel.EMERGENCY;
@@ -245,11 +244,40 @@ public class FlutterBluePlugin implements FlutterPlugin, ActivityAware, MethodCa
                             new String[] {
                                     Manifest.permission.ACCESS_FINE_LOCATION
                             },
-                            REQUEST_FINE_LOCATION_PERMISSIONS);
+                            REQUEST_FINE_AND_BLUETOOTH_LOCATION_PERMISSIONS);
                     pendingCall = call;
                     pendingResult = result;
                     break;
                 }
+
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT)
+                            != PackageManager.PERMISSION_GRANTED) {
+                        ActivityCompat.requestPermissions(
+                                activityBinding.getActivity(),
+                                new String[]{
+                                        Manifest.permission.BLUETOOTH_CONNECT
+                                },
+                                REQUEST_FINE_AND_BLUETOOTH_LOCATION_PERMISSIONS);
+                        pendingCall = call;
+                        pendingResult = result;
+                        break;
+                    }
+
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_SCAN)
+                            != PackageManager.PERMISSION_GRANTED) {
+                        ActivityCompat.requestPermissions(
+                                activityBinding.getActivity(),
+                                new String[]{
+                                        Manifest.permission.BLUETOOTH_SCAN
+                                },
+                                REQUEST_FINE_AND_BLUETOOTH_LOCATION_PERMISSIONS);
+                        pendingCall = call;
+                        pendingResult = result;
+                        break;
+                    }
+                }
+
                 startScan(call, result);
                 break;
             }
@@ -638,9 +666,9 @@ public class FlutterBluePlugin implements FlutterPlugin, ActivityAware, MethodCa
     @Override
     public boolean onRequestPermissionsResult(
             int requestCode, String[] permissions, int[] grantResults) {
-        if (requestCode == REQUEST_FINE_LOCATION_PERMISSIONS) {
+        if (requestCode == REQUEST_FINE_AND_BLUETOOTH_LOCATION_PERMISSIONS) {
             if (grantResults[0] == PackageManager.PERMISSION_GRANTED) {
-                startScan(pendingCall, pendingResult);
+                onMethodCall(pendingCall, pendingResult);
             } else {
                 pendingResult.error(
                         "no_permissions", "flutter_blue plugin requires location permissions for scanning", null);
